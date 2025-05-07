@@ -47,14 +47,17 @@ class SegmentationDataset(Dataset):
 
     def idx_from_sentence(self, sentence):
         self.lang.add_sentence(sentence)
-        return [self.lang.word2index[word] for word in sentence.split(" ")]
+        return [self.lang.word2index[word] for word in sentence.split(" ")] + [
+            -1 for _ in range(max(0, 32 - len(sentence.split(" "))))
+        ]
 
     def tensor_from_sentence(self, sentence):
         indexes = self.idx_from_sentence(sentence)
         return torch.tensor(indexes, dtype=torch.long, device="cpu")
 
     def sentence_from_tensor(self, tensor):
-        indexes = tensor.tolist()
+        indexes: List = tensor.tolist()
+        indexes = indexes[:indexes.index(-1)]
         return " ".join([self.lang.index2word[idx] for idx in indexes])
 
     def __len__(self):
@@ -63,7 +66,7 @@ class SegmentationDataset(Dataset):
     def __getitem__(self, idx):
         point = self.data[idx]
 
-        prompt = f"segmentation mask of {point.structure} of {'an' if point.view[0] in 'aeiou' else 'a'} {point.view} view xray"
+        prompt = f"{point.structure} in {'an' if point.view[0] in 'aeiou' else 'a'} {point.view} view xray"
         prompt = self.tensor_from_sentence(prompt)
 
         return (
@@ -71,7 +74,7 @@ class SegmentationDataset(Dataset):
             torch.from_numpy(point.base_img),
             torch.from_numpy(point.label_binary),
             torch.from_numpy(point.label_count),
-            torch.from_numpy(point.gt_mask)
+            torch.from_numpy(point.gt_mask),
         )
 
 
@@ -105,8 +108,10 @@ def generate_labels(mask, patch_size=8):
                 i * patch_size : (i + 1) * patch_size,
                 j * patch_size : (j + 1) * patch_size,
             ]
-            
-            patch_binary[i, j] = 1 if np.count_nonzero(patch) > (0.80 * patch_size**2) else 0
+
+            patch_binary[i, j] = (
+                1 if np.count_nonzero(patch) > (0.80 * patch_size**2) else 0
+            )
             patch_count[i, j] = np.count_nonzero(patch.flatten())
 
     return patch_binary, patch_count
@@ -131,5 +136,5 @@ def enhance_contrast(img):
 def enhance_edges(img):
     blurred = cv2.GaussianBlur(img, (0, 0), 1.0)
     sharpened = cv2.addWeighted(img, 1.3, blurred, -0.3, 0)
-    
+
     return sharpened[..., np.newaxis]
