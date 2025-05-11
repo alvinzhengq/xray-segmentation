@@ -1,4 +1,9 @@
 __pycache__/
-data/bulk/
+data/training/all/
+data/training/all_full/
+data/training/all_ap_pa/
+data/training/chest/
+data/training/all/
+data/synthetic/segmentator/
 checkpoints/
 *.zip
