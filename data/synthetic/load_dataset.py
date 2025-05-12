@@ -1,38 +1,27 @@
 import os
+import cv2
 import torch
-import random
 import numpy as np
 import pandas as pd
 import nibabel as nib
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import torchvision.transforms.functional as TF
 
-from diffdrr.visualization import plot_drr, plot_mask
-from torchio import LabelMap, ScalarImage, Subject
-from diffdrr.data import load_example_ct, read
+from torchvision import transforms
+from diffdrr.data import read
 from einops import rearrange
+from torchio import Subject
 from diffdrr.drr import DRR
 from sys import getsizeof
 
-import cv2
-import torchvision.transforms.functional as TF
-from torchvision import transforms
-from skimage.exposure import match_histograms
-from PIL import Image
-
-
-reference = Image.open('eval.png').convert('L')
-reference = np.asarray(reference.getdata())
-reference = rearrange(reference, '(h w) -> h w 1', h=200)
-        
 
 class Cv2CropBlackAndResize:
     def __init__(self, output_size):
         self.output_size = output_size
 
     def __call__(self, img, masks):
-        gray = (img.cpu().numpy() * 255).astype(np.uint8)
-        _, thresh = cv2.threshold(gray, 46, 255, cv2.THRESH_BINARY)
+        gray = (img.numpy() * 255).astype(np.uint8)
+        _, thresh = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY)
         
         kernel = np.ones((3, 3), np.uint8)
         thresh = cv2.dilate(thresh, kernel, iterations=1)
@@ -71,11 +60,9 @@ class Cv2CropBlackAndResize:
             interpolation=transforms.InterpolationMode.BICUBIC,
         )
         
-        resized_np_img = (resized_img.cpu().unsqueeze(-1).numpy() * 255).astype(np.uint8)
-        matched = match_histograms(resized_np_img, reference, channel_axis=-1)
-        
-        matched = ((matched - matched.min()) / (matched.max() - matched.min()) * 255).astype(np.uint8)
-        resized_img = torch.tensor(matched).squeeze()
+        resized_np_img = (resized_img.cpu().numpy() * 255).astype(np.uint8)
+        equalized = cv2.equalizeHist(resized_np_img)
+        resized_img = torch.tensor(equalized)
 
         return resized_img, resized_masks
 
@@ -152,7 +139,7 @@ def convert_ct_xray(ct_directory, output_directory):
         ct_directory + "/combined_labels.nii.gz",
         labels=None,
         orientation="AP",
-        bone_attenuation_multiplier=5.0,
+        bone_attenuation_multiplier=2.0,
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,18 +158,15 @@ def convert_ct_xray(ct_directory, output_directory):
     # Define rotations (ZXY Euler) for 4 cardinal views
     cardinal_views = {
         "AP": [0.0, 0.0, 0.0],
-        # "LAP": [45.0, 0.0, 0.0],
-        # "LLAT": [90.0, 0.0, 0.0],
-        # "RPA": [135.0, 0.0, 0.0],
+        "LAP": [45.0, 0.0, 0.0],
+        "RAP": [315.0, 0.0, 0.0],
         "PA": [180.0, 0.0, 0.0],
-        # "LPA": [225.0, 0.0, 0.0],
-        # "RLAT": [270.0, 0.0, 0.0],
-        # "RAP": [315.0, 0.0, 0.0]
+        "LPA": [225.0, 0.0, 0.0],
+        "RPA": [135.0, 0.0, 0.0]
     }
-    view_names = list(cardinal_views.items())
 
     im_transform = Cv2CropBlackAndResize((256, 256))
-    for view_name, degrees in view_names[0:6]:
+    for view_name, degrees in cardinal_views.items():
         rotations = (
             torch.tensor([degrees], device=device) * np.pi / 180.0
         )  # Convert to radians

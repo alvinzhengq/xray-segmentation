@@ -2,7 +2,6 @@ import os
 import pandas as pd
 
 from load_dataset import convert_ct_xray
-from functools import reduce
 
 csv_path = "meta.csv"
 dataset_path = "segmentator"
@@ -19,8 +18,6 @@ scans = df[
 ]
 
 scan_ids = scans["image_id"].tolist()
-# scan_ids = scan_ids[scan_ids.index("s0019") + 1 :] # 0019
-
 print(f"{len(scan_ids)} scans containing ONLY 'Thorax'")
 
 for i, folder in enumerate(scan_ids):
