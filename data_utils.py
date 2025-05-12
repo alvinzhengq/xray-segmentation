@@ -3,6 +3,7 @@ import random
 import torch
 import cv2
 
+from scipy import ndimage
 from typing import List
 from dataclasses import dataclass
 from torch.utils.data import Dataset
@@ -115,24 +116,36 @@ class SegmentationDataset(Dataset):
 
 
 def generate_labels(mask, patch_size=8):
-    _, h, w = mask.shape
+    if len(mask.shape) == 3:
+        mask = np.expand_dims(mask, axis=0)
+        B = 1
+    else:
+        B = mask.shape[0]
+
+    h, w = mask.shape[-2:]
     patch_h, patch_w = h // patch_size, w // patch_size
 
-    patch_binary = np.zeros((patch_h, patch_w))
-    patch_count = np.zeros((patch_h, patch_w))
+    patch_binary = np.zeros((B, patch_h, patch_w))
+    patch_count = np.zeros((B, patch_h, patch_w))
 
-    for i in range(patch_h):
-        for j in range(patch_w):
-            patch = mask[
-                ...,
-                i * patch_size : (i + 1) * patch_size,
-                j * patch_size : (j + 1) * patch_size,
-            ]
+    for b in range(B):
+        for i in range(patch_h):
+            for j in range(patch_w):
+                patch = mask[
+                    b,
+                    :,
+                    i * patch_size : (i + 1) * patch_size,
+                    j * patch_size : (j + 1) * patch_size,
+                ]
 
-            patch_binary[i, j] = (
-                1 if np.count_nonzero(patch) > (0.75 * patch_size**2) else 0
-            )
-            patch_count[i, j] = np.count_nonzero(patch.flatten())
+                patch_binary[b, i, j] = (
+                    1 if np.count_nonzero(patch) > (0.75 * patch_size**2) else 0
+                )
+                patch_count[b, i, j] = np.count_nonzero(patch.flatten())
+
+    if B == 1:
+        patch_binary = patch_binary.squeeze(0)
+        patch_count = patch_count.squeeze(0)
 
     return patch_binary, patch_count
 
@@ -191,97 +204,19 @@ def enhance_edges(img):
     return sharpened[..., np.newaxis]
 
 
-relevant_structures = [
-    "adrenal_gland_left",
-    "adrenal_gland_right",
-    "aorta",
-    "atrial_appendage_left",
-    "autochthon_left",
-    "autochthon_right",
-    "brachiocephalic_trunk",
-    "brachiocephalic_vein_left",
-    "brachiocephalic_vein_right",
-    "clavicula_left",
-    "clavicula_right",
-    "colon",
-    "common_carotid_artery_left",
-    "common_carotid_artery_right",
-    "costal_cartilages",
-    "duodenum",
-    "esophagus",
-    "gallbladder",
-    "heart",
-    "iliac_artery_left",
-    "iliac_artery_right",
-    "iliac_vena_left",
-    "iliac_vena_right",
-    "iliopsoas_left",
-    "iliopsoas_right",
-    "inferior_vena_cava",
-    "kidney_cyst_left",
-    "kidney_cyst_right",
-    "kidney_left",
-    "kidney_right",
-    "liver",
-    "lung_lower_lobe_left",
-    "lung_lower_lobe_right",
-    "lung_middle_lobe_right",
-    "lung_upper_lobe_left",
-    "lung_upper_lobe_right",
-    "pancreas",
-    "portal_vein_and_splenic_vein",
-    "pulmonary_vein",
-    "rib_left_1",
-    "rib_left_10",
-    "rib_left_11",
-    "rib_left_12",
-    "rib_left_2",
-    "rib_left_3",
-    "rib_left_4",
-    "rib_left_5",
-    "rib_left_6",
-    "rib_left_7",
-    "rib_left_8",
-    "rib_left_9",
-    "rib_right_1",
-    "rib_right_10",
-    "rib_right_11",
-    "rib_right_12",
-    "rib_right_2",
-    "rib_right_3",
-    "rib_right_4",
-    "rib_right_5",
-    "rib_right_6",
-    "rib_right_7",
-    "rib_right_8",
-    "rib_right_9",
-    "scapula_left",
-    "scapula_right",
-    "small_bowel",
-    "spinal_cord",
-    "spleen",
-    "sternum",
-    "stomach",
-    "subclavian_artery_left",
-    "subclavian_artery_right",
-    "superior_vena_cava",
-    "thyroid_gland",
-    "trachea",
-    "vertebrae_L1",
-    "vertebrae_L2",
-    "vertebrae_L3",
-    "vertebrae_L4",
-    "vertebrae_L5",
-    "vertebrae_T1",
-    "vertebrae_T10",
-    "vertebrae_T11",
-    "vertebrae_T12",
-    "vertebrae_T2",
-    "vertebrae_T3",
-    "vertebrae_T4",
-    "vertebrae_T5",
-    "vertebrae_T6",
-    "vertebrae_T7",
-    "vertebrae_T8",
-    "vertebrae_T9"
-]
+class RemoveWhiteLines(torch.nn.Module):
+    def __init__(self, dark=0.1, bright=0.8):
+        super().__init__()
+        self.dark = dark
+        self.bright = bright
+
+    def forward(self, img):
+        img_np = img.numpy().squeeze(0)
+
+        dark_regions = img_np < self.dark
+        bright_lines = img_np > self.bright
+
+        target_pixels = bright_lines & ndimage.binary_dilation(dark_regions)
+        img[0][target_pixels] = 0.0
+
+        return img
