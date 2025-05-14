@@ -2,7 +2,7 @@
 # Visual Transformer
 # CNN_xray Segmentation Model
 
-A **PyTorch‑based** U‑Net style convolutional neural network for multi‑class segmentation of chest X‑ray images into **left lung, right lung, and heart** regions.
+A **PyTorch‑based** U‑Net style convolutional neural network for multi‑class segmentation of chest X‑ray images into 118 regions.
 
 ---
 
@@ -79,9 +79,9 @@ python visual.py     --model-path checkpoints/best_model.pth     --output-dir ru
 
 ## 🔍 Sample Outputs
 
-| Left Lung | Right Lung | Heart |
-|-----------|------------|-------|
-| ![Left](run/vis/left_lung.png) | ![Right](run/vis/right_lung.png) | ![Heart](run/vis/heart.png) |
+| Mask GT | Model Prediction |
+|-----------|----------|
+| ![Left](CNN_xray/runs/vis/JPCLN022_mask.png) |![Right](CNN_xray/runs/vis/JPCLN022_pred.png)
 
 *(See [`run/vis/`](run/vis/) for more examples.)*
 
