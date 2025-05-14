@@ -53,7 +53,7 @@ def macro_soft_dice(pred, gt, skip_bg=True):
 # --------------------------------------------
 
 def save_best(model, optim, epoch, dice, train_loss, val_loss):
-    path = CKPT_DIR / "best_v3.pt"
+    path = CKPT_DIR / "best.pt"
     torch.save({"epoch": epoch,
                 "dice": dice,
                 "model_state": model.state_dict(),
